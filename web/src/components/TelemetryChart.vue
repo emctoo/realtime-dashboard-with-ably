@@ -5,7 +5,7 @@
             <button
                 v-for="metric in metrics"
                 :key="metric.id"
-                @click="currentMetric = metric.id"
+                @click="handleMetricChange(metric.id)"
                 class="px-3 py-1.5 text-xs font-medium rounded transition-colors duration-200 relative overflow-hidden"
                 :class="[
                     currentMetric === metric.id 
@@ -33,7 +33,8 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from "vue";
+import { ref, computed, onMounted, onUnmounted, watch } from "vue";
+import { useAblyStore } from "../stores/ably";
 import {
     Chart as ChartJS,
     CategoryScale,
@@ -58,6 +59,16 @@ ChartJS.register(
     Filler,
 );
 
+const props = defineProps({
+    carId: {
+        type: String,
+        required: true
+    }
+});
+
+// Ably store
+const ablyStore = useAblyStore();
+
 // Icons as components
 const SpeedIcon = {
     template: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -78,63 +89,34 @@ const FuelIcon = {
     </svg>`
 };
 
-const props = defineProps({
-    data: {
-        type: Array,
-        required: true,
-        default: () => [],
-    },
-    carId: {
-        type: String,
-        required: true,
-    },
-});
-
+// State
 const currentMetric = ref("speed");
+const telemetryData = ref([]);
+const maxDataPoints = 60; // 保留60个数据点
+
 const metrics = [
-    { id: "speed", label: "Speed", color: "#3B82F6", icon: SpeedIcon },
-    { id: "temp", label: "Temp", color: "#EF4444", icon: TempIcon },
-    { id: "fuel", label: "Fuel", color: "#10B981", icon: FuelIcon },
+    { id: "speed", label: "Speed", color: "#3B82F6", icon: SpeedIcon, unit: "km/h", max: 340, min: 0 },
+    { id: "temp", label: "Temp", color: "#EF4444", icon: TempIcon, unit: "°C", max: 120, min: 60 },
+    { id: "fuel", label: "Fuel", color: "#10B981", icon: FuelIcon, unit: "%", max: 100, min: 0 }
 ];
 
-let updateInterval;
-const mockData = ref([]);
+// 获取当前指标的配置
+const currentMetricConfig = computed(() => 
+    metrics.find(m => m.id === currentMetric.value)
+);
 
-// 生成初始数据
-const generateInitialData = (length = 60) => {
-    const now = Date.now();
-    return Array.from({ length }, (_, i) => ({
-        timestamp: now - (length - i) * 1000,
-        speed: 280 + Math.random() * 40,
-        temp: 90 + Math.random() * 10,
-        fuel: 100 - (i * 0.5 + Math.random() * 2),
-    }));
-};
-
-// 更新数据的函数
-const updateMockData = () => {
-    const newData = [...mockData.value.slice(1)];
-    const lastTimestamp = newData[newData.length - 1].timestamp;
-    newData.push({
-        timestamp: lastTimestamp + 1000,
-        speed: 280 + Math.random() * 40,
-        temp: 90 + Math.random() * 10,
-        fuel: newData[newData.length - 1].fuel - (0.5 + Math.random() * 0.5),
-    });
-    mockData.value = newData;
-};
-
+// Format data for chart
 const chartData = computed(() => ({
-    labels: mockData.value.map(d => {
+    labels: telemetryData.value.map(d => {
         const date = new Date(d.timestamp);
         return `${date.getMinutes().toString().padStart(2, '0')}:${date.getSeconds().toString().padStart(2, '0')}`;
     }),
     datasets: [
         {
-            label: metrics.find(m => m.id === currentMetric.value).label,
-            data: mockData.value.map(d => d[currentMetric.value]),
-            borderColor: metrics.find(m => m.id === currentMetric.value).color,
-            backgroundColor: `${metrics.find(m => m.id === currentMetric.value).color}20`,
+            label: currentMetricConfig.value.label,
+            data: telemetryData.value.map(d => d.value),
+            borderColor: currentMetricConfig.value.color,
+            backgroundColor: `${currentMetricConfig.value.color}20`,
             tension: 0.4,
             fill: true,
             pointRadius: 0,
@@ -143,10 +125,11 @@ const chartData = computed(() => ({
     ],
 }));
 
-const chartOptions = {
+// Chart options
+const chartOptions = computed(() => ({
     responsive: true,
     maintainAspectRatio: false,
-    animation: false, // 禁用所有动画
+    animation: false,
     animations: {
         colors: false,
         x: false,
@@ -176,10 +159,7 @@ const chartOptions = {
             displayColors: false,
             callbacks: {
                 label: (context) => {
-                    let suffix = currentMetric.value === 'speed' ? ' km/h'
-                        : currentMetric.value === 'temp' ? '°C'
-                        : '%';
-                    return `${context.parsed.y.toFixed(1)}${suffix}`;
+                    return `${context.parsed.y.toFixed(1)}${currentMetricConfig.value.unit}`;
                 }
             }
         },
@@ -202,6 +182,8 @@ const chartOptions = {
         },
         y: {
             display: true,
+            min: currentMetricConfig.value.min,
+            max: currentMetricConfig.value.max,
             grid: {
                 display: true,
                 color: 'rgba(148, 163, 184, 0.1)',
@@ -212,10 +194,7 @@ const chartOptions = {
                     size: 10,
                 },
                 callback: (value) => {
-                    let suffix = currentMetric.value === 'speed' ? ' km/h'
-                        : currentMetric.value === 'temp' ? '°C'
-                        : '%';
-                    return `${value}${suffix}`;
+                    return `${value}${currentMetricConfig.value.unit}`;
                 }
             },
         },
@@ -224,19 +203,58 @@ const chartOptions = {
         intersect: false,
         mode: 'index',
     },
+}));
+
+// Subscription management
+let currentSubscription = null;
+
+const subscribeToMetric = async (metric) => {
+    // 取消之前的订阅
+    if (currentSubscription) {
+        const prevChannelName = ablyStore.getChannelName('telemetry', `${props.carId}:${currentMetric.value}`);
+        await ablyStore.unsubscribe(prevChannelName);
+    }
+
+    // 清除现有数据
+    telemetryData.value = [];
+
+    // 订阅新的指标
+    const channelName = ablyStore.getChannelName('telemetry', `${props.carId}:${metric}`);
+    await ablyStore.subscribe(channelName, (message) => {
+        telemetryData.value.push({
+            timestamp: message.data.timestamp,
+            value: message.data[metric]
+        });
+
+        // 保持固定数量的数据点
+        if (telemetryData.value.length > maxDataPoints) {
+            telemetryData.value.shift();
+        }
+    });
 };
 
-onMounted(() => {
-    // 初始化数据
-    mockData.value = generateInitialData();
-    // 设置更新间隔
-    updateInterval = setInterval(updateMockData, 1000);
+// Handle metric change
+const handleMetricChange = async (metric) => {
+    currentMetric.value = metric;
+    await subscribeToMetric(metric);
+};
+
+// Watch for car changes
+watch(() => props.carId, async (newCarId) => {
+    if (newCarId) {
+        await subscribeToMetric(currentMetric.value);
+    }
 });
 
-onUnmounted(() => {
-    // 清理定时器
-    if (updateInterval) {
-        clearInterval(updateInterval);
+// Component lifecycle
+onMounted(async () => {
+    await subscribeToMetric(currentMetric.value);
+});
+
+onUnmounted(async () => {
+    if (currentSubscription) {
+        const channelName = ablyStore.getChannelName('telemetry', `${props.carId}:${currentMetric.value}`);
+        await ablyStore.unsubscribe(channelName);
     }
 });
 </script>

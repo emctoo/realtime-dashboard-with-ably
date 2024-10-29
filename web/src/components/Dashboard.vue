@@ -118,22 +118,22 @@
 
 <script setup>
 import { ref, computed, onMounted, onUnmounted, watch } from "vue";
+import { storeToRefs } from 'pinia';
+import { useAblyStore } from "../stores/ably";
 import CarSelector from "./CarSelector.vue";
 import TelemetryChart from "./TelemetryChart.vue";
 import TrackView from "./TrackView.vue";
 import RaceEvents from "./RaceEvents.vue";
-import { ablyService } from "../services/ably";
 
-// Connection State
-const isConnected = ref(false);
-const error = ref(null);
-const connectionStatus = ref('disconnected');
+// Ably Store
+const ablyStore = useAblyStore();
+const { isConnected, connectionState, error } = storeToRefs(ablyStore);
 
-// Computed for connection display
+// Connection Status Display
 const connectionStatusClass = computed(() => ({
     'bg-green-500': isConnected.value,
-    'bg-yellow-500': connectionStatus.value === 'connecting',
-    'bg-red-500': connectionStatus.value === 'failed' || !!error.value,
+    'bg-yellow-500': connectionState.value === 'connecting',
+    'bg-red-500': connectionState.value === 'failed' || !!error.value,
     'text-white': true,
 }));
 
@@ -187,9 +187,6 @@ const weatherData = ref({
 
 const raceEvents = ref([]);
 
-// Subscriptions storage
-const activeSubscriptions = ref(new Map());
-
 // Methods
 const getTrackStatusColor = (status) => {
     const colors = {
@@ -213,102 +210,86 @@ const handleCarSelect = async (carId) => {
 const subscribeToCar = async (carId) => {
     try {
         // 取消之前的订阅
-        if (activeSubscriptions.value.has('telemetry')) {
-            const prevSub = activeSubscriptions.value.get('telemetry');
-            await ablyService.unsubscribe(prevSub);
-        }
+        const prevChannelName = ablyStore.getChannelName('telemetry', selectedCar.value);
+        await ablyStore.unsubscribe(prevChannelName);
 
         // 清除现有数据
         telemetryData.value = [];
 
         // 创建新订阅
-        const channelName = ablyService.getChannelName('telemetry', carId);
-        const subscription = await ablyService.subscribeToChannel(channelName, (message) => {
+        const channelName = ablyStore.getChannelName('telemetry', carId);
+        await ablyStore.subscribe(channelName, (message) => {
             telemetryData.value.push(message.data);
             if (telemetryData.value.length > 60) {
                 telemetryData.value.shift();
             }
         });
-
-        activeSubscriptions.value.set('telemetry', subscription);
+        console.log(`subscribe to ${channelName}`);
     } catch (err) {
         console.error('Failed to subscribe to car telemetry:', err);
-        error.value = `Failed to subscribe to car telemetry: ${err.message}`;
     }
 };
 
 const subscribeToRaceEvents = async () => {
     try {
-        const channelName = ablyService.getChannelName('race', 'events');
-        const subscription = await ablyService.subscribeToChannel(channelName, (message) => {
+        const channelName = ablyStore.getChannelName('race', 'events');
+        await ablyStore.subscribe(channelName, (message) => {
             raceEvents.value.unshift(message.data);
-            // 限制事件数量
             if (raceEvents.value.length > 100) {
                 raceEvents.value.pop();
             }
         });
-
-        activeSubscriptions.value.set('events', subscription);
     } catch (err) {
         console.error('Failed to subscribe to race events:', err);
-        error.value = `Failed to subscribe to race events: ${err.message}`;
     }
 };
 
 const subscribeToWeather = async () => {
     try {
-        const channelName = ablyService.getChannelName('weather', 'track');
-        const subscription = await ablyService.subscribeToChannel(channelName, (message) => {
+        const channelName = ablyStore.getChannelName('weather', 'track');
+        await ablyStore.subscribe(channelName, (message) => {
             weatherData.value = { ...weatherData.value, ...message.data };
         });
-
-        activeSubscriptions.value.set('weather', subscription);
     } catch (err) {
         console.error('Failed to subscribe to weather updates:', err);
-        error.value = `Failed to subscribe to weather updates: ${err.message}`;
     }
 };
 
-// Connection status monitoring
-watch(() => ablyService.connectionState.value, (newState) => {
-    console.log(`connection state changes: ${newState} ...`);
-    connectionStatus.value = newState;
-    isConnected.value = newState === 'connected';
-    console.log(`connected: ${isConnected}`);
-    
-    if (newState === 'connected') {
-        error.value = null;
-    }
-});
-
 // Component lifecycle
 onMounted(async () => {
-    try {
-        // 初始化Ably
-        await ablyService.initialize(import.meta.env.VITE_ABLY_API_KEY);
-        
-        // 订阅所有需要的channels
+    if (isConnected.value) {
+        // 如果已连接,直接订阅所有channels
         await Promise.all([
             subscribeToCar(selectedCar.value),
             subscribeToRaceEvents(),
             subscribeToWeather(),
         ]);
-        
-    } catch (err) {
-        console.error('Failed to initialize dashboard:', err);
-        error.value = `Failed to initialize dashboard: ${err.message}`;
+    } else {
+        // 监听连接状态,连接成功后订阅
+        const unwatch = watch(() => isConnected.value, async (newValue) => {
+            if (newValue) {
+                await Promise.all([
+                    subscribeToCar(selectedCar.value),
+                    subscribeToRaceEvents(),
+                    subscribeToWeather(),
+                ]);
+                unwatch();
+            }
+        });
     }
 });
 
 onUnmounted(async () => {
-    // 清理所有订阅
-    for (const [key, subscription] of activeSubscriptions.value) {
-        await ablyService.unsubscribe(subscription);
+    // 组件卸载时清理所有订阅
+    const channels = [
+        ablyStore.getChannelName('telemetry', selectedCar.value),
+        ablyStore.getChannelName('race', 'events'),
+        ablyStore.getChannelName('weather', 'track')
+    ];
+
+    for (const channelName of channels) {
+        await ablyStore.unsubscribe(channelName);
     }
-    activeSubscriptions.value.clear();
-    
-    // 断开Ably连接
-    await ablyService.disconnect();
 });
 </script>
 
