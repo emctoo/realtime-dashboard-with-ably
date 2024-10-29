@@ -1,2 +1,8 @@
 ably
 python-dotenv
+fastapi
+python-multipart
+python-jose[cryptography]
+redis
+uvicorn
+pyjwt
