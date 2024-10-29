@@ -6,3 +6,4 @@ python-jose[cryptography]
 redis
 uvicorn
 pyjwt
+pydantic

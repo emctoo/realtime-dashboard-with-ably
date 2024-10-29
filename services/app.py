@@ -2,17 +2,22 @@ from fastapi import FastAPI, HTTPException, Depends
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, Literal
 import jwt
 import redis
 import os
 from datetime import datetime, timedelta
 import dotenv
+import logging
+from ably import AblyRest
 
 dotenv.load_dotenv()
 
+# Ably client
+ably_client = AblyRest(os.getenv("ABLY_API_KEY"))
 
 app = FastAPI()
+log = logging.getLogger('fastapi')
 
 # CORS设置
 app.add_middleware(
@@ -48,6 +53,14 @@ MOCK_USERS = {
         "hashed_password": "user123",
         "disabled": False,
         "subscription": "basic"
+    },
+    "user1": {
+        "username": "u1",
+        "fullname": "User1",
+        "email": "user1@example.com",
+        "hashed_password": "user234",
+        "disabled": False,
+        "subscription": "premium"
     }
 }
 
@@ -126,3 +139,52 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends()):
 @app.get("/users/me")
 async def read_users_me(current_user: UserInDB = Depends(get_current_user)):
     return current_user
+
+
+class RaceEvent(BaseModel):
+    type: Literal["FLAG", "PENALTY", "PIT", "INCIDENT"]
+    message: str
+    timestamp: Optional[int] = None
+
+
+@app.post("/race/events", status_code=201)
+async def publish_race_event(
+    event: RaceEvent,
+    current_user: UserInDB = Depends(get_current_user)
+):
+    if current_user.username != "admin":
+        raise HTTPException(
+            status_code=403,
+            detail="You don't have permission to publish events"
+        )
+
+    try:
+        # 确保有 timestamp
+        if not event.timestamp:
+            event.timestamp = int(datetime.utcnow().timestamp() * 1000)
+            
+        # 准备消息数据
+        message_data = {
+            "id": f"evt_{event.timestamp}",  # 添加唯一标识符
+            "type": event.type,
+            "message": event.message,
+            "timestamp": event.timestamp,
+            "publisher": current_user.username
+        }
+        
+        # 发布消息到 Ably
+        channel = ably_client.channels.get("race:events")
+        result = await channel.publish("update", message_data)
+        log.info('result: %s', result)
+        
+        return {
+            "status": "success",
+            "message": "Event published successfully",
+            "data": message_data,            
+        }
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to publish event: {str(e)}"
+        )

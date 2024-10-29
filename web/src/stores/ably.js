@@ -81,6 +81,7 @@ export const useAblyStore = defineStore('ably', {
         
         // 添加订阅
         await channel.subscribe('update', callback);
+        console.log(`subscribed to ${channelName}`);
         this.subscriptions.set(channelName, subscription);
         
         return subscription;

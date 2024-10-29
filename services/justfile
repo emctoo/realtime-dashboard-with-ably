@@ -1,0 +1,46 @@
+export token := ```
+    curl -sL -X POST http://localhost:8000/token \
+        -H "Content-Type: application/x-www-form-urlencoded" \
+        -d "username=admin&password=admin123" | jq -r .access_token
+```
+
+admin-token:
+    @curl -sL -X POST http://localhost:8000/token \
+        -H "Content-Type: application/x-www-form-urlencoded" \
+        -d "username=admin&password=admin123" | jq -r .access_token
+
+echo-token:
+    @echo "{{token}}"
+
+flag:
+    #!/usr/bin/env bash
+    set -x -euo pipefail
+
+    curl -sL -X POST http://localhost:8000/race/events \
+      -H "Authorization: Bearer ${token}" \
+      -H "Content-Type: application/json" \
+      -d '{"type": "FLAG", "message": "Yellow flag in sector 2", "timestamp": 1698645000000}' | jq .
+
+penalty:
+    #!/usr/bin/env bash
+    set -x -euo pipefail
+
+    curl -sL -X POST http://localhost:8000/race/events \
+    -H "Authorization: Bearer ${token}" \
+    -H "Content-Type: application/json" \
+    -d '{
+        "type": "PENALTY",
+        "message": "5 second time penalty for car 44 - track limits"
+    }' | jq .
+
+pit:
+    @curl -sL -X POST http://localhost:8000/race/events \
+      -H "Authorization: Bearer {{token}}" \
+      -H "Content-Type: application/json" \
+      -d '{ "type": "PIT", "message": "Car 33 boxes for hard tires" }' | jq .
+
+incident:
+    @curl -sL -X POST http://localhost:8000/race/events \
+      -H "Authorization: Bearer {{token}}" \
+      -H "Content-Type: application/json" \
+      -d '{ "type": "INCIDENT", "message": "Contact between car 16 and car 55 under investigation" }' | jq .
