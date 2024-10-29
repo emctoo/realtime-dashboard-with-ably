@@ -116,13 +116,11 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends()):
     # Filter sensitive information
     user_info = {k: v for k, v in user.items() if k != "hashed_password"}
     
-    response_data = {
+    return {
         "access_token": access_token,
         "token_type": "bearer",
         "user_info": user_info
     }
-    
-    return response_data
 
 
 @app.get("/users/me")
