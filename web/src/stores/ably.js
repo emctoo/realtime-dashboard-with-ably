@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia';
 import * as Ably from "ably";
 
+import { useAuthStore } from './auth';
 
 export const useAblyStore = defineStore('ably', {
   state: () => ({
@@ -22,12 +23,13 @@ export const useAblyStore = defineStore('ably', {
         // 如果已经有client，先关闭
         if (this.client) {
           await this.disconnect();
+          console.log('disconnected');
         }
 
         // 创建新的Ably客户端        
         this.client = new Ably.Realtime({
           key: apiKey,
-          clientId: 'my', // `web-${Math.random().toString(36).substr(2, 9)}`, // 随机生成clientId
+          clientId: `anno-web-${Math.random().toString(36).substr(2, 9)}`,
         });
 
         // 监听连接状态变化

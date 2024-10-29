@@ -13,11 +13,13 @@ app.use(pinia);
 const ablyStore = useAblyStore();
 const authStore = useAuthStore();
 
-Promise.all([
-  ablyStore.initialize(import.meta.env.VITE_ABLY_API_KEY),
-  authStore.init()
-]).catch(err => {
-  console.error('Failed to initialize stores:', err);
-});
+Promise
+  .all([
+    ablyStore.initialize(import.meta.env.VITE_ABLY_API_KEY),
+    authStore.init()
+  ])
+  .catch(err => {
+    console.error('Failed to initialize stores:', err);
+  });
 
 app.mount('#app');
