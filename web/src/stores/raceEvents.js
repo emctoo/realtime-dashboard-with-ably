@@ -23,6 +23,7 @@ export const useRaceEventsStore = defineStore('raceEvents', {
     hasError: (state) => !!state.error,
     
     eventTypes: () => ['All', 'Flag', 'Penalty', 'Pit', 'Incident'],
+    eventTypesWhenCollapsed: () => ['Flag', 'Penalty', 'Pit', 'Incident'],
 
     eventTypeStyles: () => ({
       FLAG: "bg-yellow-500/10",

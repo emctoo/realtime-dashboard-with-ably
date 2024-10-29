@@ -4,9 +4,9 @@
     <div class="flex justify-between items-center">
       <div class="flex items-center gap-4">
         <h2 class="text-xl font-semibold">Race Events</h2>
-        <div v-show="!isCollapsed" class="flex gap-1.5">
+        <div class="flex gap-1.5">
           <button
-            v-for="filter in eventTypes"
+            v-for="filter in eventTypesWhenCollapsed"
             :key="filter"
             @click="handleFilterChange(filter)"
             :class="[
@@ -93,6 +93,7 @@ const raceEventsStore = useRaceEventsStore();
 const { 
   filteredEvents,
   eventTypes,
+  eventTypesWhenCollapsed,
   eventTypeStyles,
   eventLabelStyles
 } = storeToRefs(raceEventsStore);
