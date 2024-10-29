@@ -13,8 +13,7 @@ dotenv.load_dotenv()
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(message)s")
 log = logging.getLogger(__name__)
 
-
-# Red Bull Ring track points from TrackView.vue
+# Red Bull Ring track points
 TRACK_POINTS = [
     {"x": 520, "y": 320},  # Start/Finish
     {"x": 600, "y": 320},  # T1
@@ -23,7 +22,7 @@ TRACK_POINTS = [
     {"x": 600, "y": 150},  # T4
     {"x": 500, "y": 150},  # T5
     {"x": 400, "y": 120},  # T6
-    {"x": 300, "y": 90},  # T7
+    {"x": 300, "y": 90},   # T7
     {"x": 200, "y": 100},  # T8
     {"x": 150, "y": 170},  # T9
     {"x": 150, "y": 220},  # T10
@@ -33,20 +32,15 @@ TRACK_POINTS = [
     {"x": 520, "y": 320},  # Complete lap
 ]
 
-
 class RaceCarSimulator:
     def __init__(self, ably_client, car_id):
         self.car_id = car_id
         self.current_point_index = 0
         self.progress = 0.0  # Progress between current and next point (0-1)
         self.lap = 1
-        self.channel = ably_client.channels.get(f"telemetry:{car_id}")
-
-    def calculate_distance(self, p1, p2):
-        return math.sqrt((p2["x"] - p1["x"]) ** 2 + (p2["y"] - p1["y"]) ** 2)
-
-    def get_next_point_index(self):
-        return (self.current_point_index + 1) % len(TRACK_POINTS)
+        # Create separate channels for different telemetry types
+        self.speed_channel = ably_client.channels.get(f"telemetry:{car_id}:speed")
+        self.position_channel = ably_client.channels.get(f"telemetry:{car_id}:position")
 
     def calculate_speed(self, current_point_idx, progress):
         """Calculate speed based on track section and randomness"""
@@ -69,8 +63,6 @@ class RaceCarSimulator:
         }
 
         target_speed = section_speeds.get(current_point_idx, base_speed)
-
-        # Add some randomness
         variation = random.uniform(-10, 10)
 
         # Simulate braking and acceleration
@@ -87,54 +79,42 @@ class RaceCarSimulator:
         """Generate and publish telemetry data"""
         while True:
             current_point = TRACK_POINTS[self.current_point_index]
-            next_point = TRACK_POINTS[self.get_next_point_index()]
+            next_point = TRACK_POINTS[(self.current_point_index + 1) % len(TRACK_POINTS)]
 
             # Calculate current position
-            current_x = (
-                current_point["x"]
-                + (next_point["x"] - current_point["x"]) * self.progress
-            )
-            current_y = (
-                current_point["y"]
-                + (next_point["y"] - current_point["y"]) * self.progress
-            )
+            current_x = current_point["x"] + (next_point["x"] - current_point["x"]) * self.progress
+            current_y = current_point["y"] + (next_point["y"] - current_point["y"]) * self.progress
 
-            # Generate telemetry data
+            # Generate speed data
             speed = self.calculate_speed(self.current_point_index, self.progress)
-            engine_temp = 90 + random.uniform(-5, 5) + (speed - 200) / 10
-            fuel_level = max(
-                0,
-                100
-                - (self.lap - 1) * 3
-                - (self.current_point_index / len(TRACK_POINTS)) * 3,
-            )
 
-            telemetry_data = {
+            # Publish speed data
+            speed_data = {
                 "timestamp": int(time.time() * 1000),
-                "position": {"x": current_x, "y": current_y},
-                "speed": speed,
-                "temp": engine_temp,
-                "fuel": fuel_level,
-                "lap": self.lap,
-                "trackPosition": (self.current_point_index + self.progress)
-                / len(TRACK_POINTS)
-                * 100,
+                "value": speed
             }
+            await self.speed_channel.publish("update", speed_data)
 
-            # Publish to Ably
-            await self.channel.publish("update", telemetry_data)
+            # Publish position data
+            position_data = {
+                "timestamp": int(time.time() * 1000),
+                "x": current_x,
+                "y": current_y,
+                "lap": self.lap,
+                "trackPosition": (self.current_point_index + self.progress) / len(TRACK_POINTS) * 100
+            }
+            await self.position_channel.publish("update", position_data)
 
             # Update position
             self.progress += 0.05
             if self.progress >= 1.0:
                 self.progress = 0.0
-                self.current_point_index = self.get_next_point_index()
+                self.current_point_index = (self.current_point_index + 1) % len(TRACK_POINTS)
                 if self.current_point_index == 0:
                     self.lap += 1
 
             # Wait before next update
-            await asyncio.sleep(1)  # 100ms update rate
-
+            await asyncio.sleep(3)  # 3000ms update rate
 
 async def main():
     ably_api_key = os.getenv("ABLY_API_KEY")
@@ -156,7 +136,6 @@ async def main():
     finally:
         await ably_client.close()
         log.info("ably client closed")
-
 
 if __name__ == "__main__":
     asyncio.run(main())
