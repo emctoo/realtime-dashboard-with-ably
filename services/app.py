@@ -109,7 +109,7 @@ async def get_current_user(token: str = Depends(oauth2_scheme)):
     return UserInDB(**user)
 
 
-@app.post("/token")
+@app.post("/api/token")
 async def login(form_data: OAuth2PasswordRequestForm = Depends()):
     user = MOCK_USERS.get(form_data.username)
     if not user or user["hashed_password"] != form_data.password:
@@ -136,7 +136,7 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends()):
     }
 
 
-@app.get("/users/me")
+@app.get("/api/users/me")
 async def read_users_me(current_user: UserInDB = Depends(get_current_user)):
     return current_user
 
@@ -147,7 +147,7 @@ class RaceEvent(BaseModel):
     timestamp: Optional[int] = None
 
 
-@app.post("/race/events", status_code=201)
+@app.post("/admin/race/events", status_code=201)
 async def publish_race_event(
     event: RaceEvent,
     current_user: UserInDB = Depends(get_current_user)

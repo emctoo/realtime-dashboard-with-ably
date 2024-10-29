@@ -3,7 +3,7 @@ import axios from 'axios';
 
 // 创建一个带有基础配置的 axios 实例
 const api = axios.create({
-  baseURL: 'http://127.0.0.1:8000',
+  baseURL: import.meta.env.SERVICE_URL,
   withCredentials: true,
   headers: {
     'Content-Type': 'application/x-www-form-urlencoded'
@@ -35,7 +35,7 @@ export const useAuthStore = defineStore('auth', {
         params.append('username', username);
         params.append('password', password);
         
-        const response = await api.post('/token', params);
+        const response = await api.post('/api/token', params);
         const { access_token, user_info } = response.data;
         
         this.token = access_token;
@@ -85,7 +85,7 @@ export const useAuthStore = defineStore('auth', {
       if (!this.token) return false;
       
       try {
-        const response = await api.get('/users/me');
+        const response = await api.get('/api/users/me');
         return true;
       } catch (err) {
         this.logout();

@@ -44,6 +44,22 @@
             </span>
           </div>
         </div>
+
+        <!-- Login Button / User Info -->
+        <div class="border-l border-gray-800 pl-4">
+          <template v-if="isAuthenticated">
+            <div class="flex items-center gap-3">
+              <span class="text-gray-400">{{ userInfo.username }}</span>
+              <span v-if="isPremium" class="px-2 py-0.5 bg-yellow-500/20 text-yellow-400 text-xs rounded">PREMIUM</span>
+              <button @click="handleLogout" class="text-gray-400 hover:text-white transition-colors">
+                Logout
+              </button>
+            </div>
+          </template>
+          <button v-else @click="showLoginModal = true" class="px-4 py-2 bg-blue-500/20 text-blue-400 rounded hover:bg-blue-500/30 transition-colors">
+            Login
+          </button>
+        </div>
       </div>
     </header>
 
@@ -88,30 +104,19 @@
     </main>
 
     <!-- Floating Race Events Panel -->
-    <div 
-      class="fixed left-0 right-0 bottom-0 z-10"
-      :class="{
-        'h-[40vh]': !eventsCollapsed,
-        'h-16': eventsCollapsed
-      }"
-    >
+    <div class="fixed left-0 right-0 bottom-0 z-10" :class="{ 'h-[40vh]': !eventsCollapsed, 'h-16': eventsCollapsed}">
       <div class="max-w-7xl mx-auto px-4">
-        <div 
-          class="rounded-t-lg w-full transition-all duration-300 ease-out"
-          :class="{
-            'h-[40vh]': !eventsCollapsed,
-            'h-16': eventsCollapsed
-          }"
-        >
+        <div class="rounded-t-lg w-full transition-all duration-300 ease-out"
+          :class="{ 'h-[40vh]': !eventsCollapsed, 'h-16': eventsCollapsed }">
           <div class="bg-[#1a1f2e]/30 backdrop-blur-sm rounded-t-lg border border-gray-800/50 h-full">
-            <RaceEvents 
-              :is-collapsed="eventsCollapsed"
-              @toggle-collapse="handleEventsCollapse"
-            />
+            <RaceEvents :is-collapsed="eventsCollapsed" @toggle-collapse="handleEventsCollapse"/>
           </div>
         </div>
       </div>
     </div>
+   
+    <!-- Login Modal -->
+    <LoginModal :show="showLoginModal" @close="showLoginModal = false" @success="handleLoginSuccess"/>
   </div>
 </template>
 
@@ -120,15 +125,22 @@ import { ref, computed, onMounted, onUnmounted, watch } from "vue";
 import { storeToRefs } from 'pinia';
 import { useAblyStore } from "../stores/ably";
 import { useRaceEventsStore } from "../stores/raceEvents";
+import { useAuthStore } from "../stores/auth"
+import LoginModal from "./LoginModal.vue";
 import CarSelector from "./CarSelector.vue";
 import TelemetryChart from "./TelemetryChart.vue";
 import TrackView from "./TrackView.vue";
 import RaceEvents from "./RaceEvents.vue";
 
-// Store setup
+// ably store
 const ablyStore = useAblyStore();
 const { isConnected, connectionState, error } = storeToRefs(ablyStore);
 const raceEventsStore = useRaceEventsStore();
+
+// Auth Store
+const authStore = useAuthStore();
+const { isAuthenticated, isPremium, userInfo } = storeToRefs(authStore);
+const showLoginModal = ref(false);
 
 // Connection Status Display
 const connectionStatusClass = computed(() => ({
@@ -196,6 +208,16 @@ const getTrackStatusColor = (status) => {
   return colors[status] || "text-gray-400";
 };
 
+const handleLoginSuccess = () => {
+  // Handle post-login logic here
+  console.log('Login successful');
+};
+
+const handleLogout = () => {
+  authStore.logout();
+  // Handle post-logout cleanup here
+};
+
 const handleEventsCollapse = () => {
   eventsCollapsed.value = !eventsCollapsed.value;
 };
@@ -242,6 +264,8 @@ const subscribeToWeather = async () => {
 
 // Component lifecycle
 onMounted(async () => {
+  authStore.init();
+
   if (isConnected.value) {
     // 如果已连接,直接订阅所需channels
     await Promise.all([

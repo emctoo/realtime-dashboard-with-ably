@@ -4,7 +4,11 @@
     <div class="flex justify-between items-center">
       <div class="flex items-center gap-4">
         <h2 class="text-xl font-semibold">Race Events</h2>
-        <div class="flex gap-1.5">
+        <TransitionGroup 
+          name="filter-list" 
+          tag="div" 
+          class="flex gap-1.5"
+        >
           <button
             v-for="filter in eventTypesWhenCollapsed"
             :key="filter"
@@ -16,7 +20,7 @@
           >
             {{ filter }}
           </button>
-        </div>
+        </TransitionGroup>
       </div>
       
       <!-- Toggle Button -->
@@ -44,27 +48,33 @@
       class="events-list mt-3 space-y-1 overflow-y-auto pr-2 custom-scrollbar"
       style="max-height: calc(100% - 3rem);"
     >
-      <div
-        v-for="event in filteredEvents"
-        :key="event.id"
-        class="event-item rounded-lg"
-        :class="eventTypeStyles[event.type]"
+      <TransitionGroup 
+        name="event-list"
+        tag="div"
+        class="space-y-1"
       >
-        <div class="p-2 flex items-center gap-3">
-          <span class="text-xs text-gray-400 whitespace-nowrap w-12">
-            {{ formatTime(event.timestamp) }}
-          </span>
-          <span class="text-sm flex-1 min-w-0 truncate">
-            {{ event.message }}
-          </span>
-          <div
-            class="px-2 py-0.5 rounded text-xs"
-            :class="eventLabelStyles[event.type]"
-          >
-            {{ event.type }}
+        <div
+          v-for="event in filteredEvents"
+          :key="event.id"
+          class="event-item rounded-lg"
+          :class="eventTypeStyles[event.type]"
+        >
+          <div class="p-2 flex items-center gap-3">
+            <span class="text-xs text-gray-400 whitespace-nowrap w-12">
+              {{ formatTime(event.timestamp) }}
+            </span>
+            <span class="text-sm flex-1 min-w-0 truncate">
+              {{ event.message }}
+            </span>
+            <div
+              class="px-2 py-0.5 rounded text-xs"
+              :class="eventLabelStyles[event.type]"
+            >
+              {{ event.type }}
+            </div>
           </div>
         </div>
-      </div>
+      </TransitionGroup>
     </div>
 
     <!-- Error Display -->
@@ -141,5 +151,41 @@ onUnmounted(async () => {
 
 .custom-scrollbar::-webkit-scrollbar-thumb:hover {
   background-color: rgba(255, 255, 255, 0.2);
+}
+
+/* 过滤器按钮动画 */
+.filter-list-move {
+  transition: all 0.3s ease;
+}
+
+.filter-list-enter-active,
+.filter-list-leave-active {
+  transition: all 0.3s ease;
+}
+
+.filter-list-enter-from,
+.filter-list-leave-to {
+  opacity: 0;
+  transform: translateX(30px);
+}
+
+/* 事件列表动画 */
+.event-list-move {
+  transition: all 0.5s ease;
+}
+
+.event-list-enter-active {
+  transition: all 0.3s ease-out;
+}
+
+.event-list-leave-active {
+  transition: all 0.3s ease-in;
+  position: absolute;
+}
+
+.event-list-enter-from,
+.event-list-leave-to {
+  opacity: 0;
+  transform: translateX(-30px);
 }
 </style>

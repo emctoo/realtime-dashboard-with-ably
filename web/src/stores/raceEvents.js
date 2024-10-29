@@ -7,7 +7,8 @@ export const useRaceEventsStore = defineStore('raceEvents', {
     currentFilter: 'All',
     loading: false,
     error: null,
-    maxEvents: 100 // 最大保留事件数
+    maxEvents: 100,
+    eventTypesWhenCollapsed: ['Flag', 'Penalty', 'Pit', 'Incident']
   }),
 
   getters: {
@@ -22,8 +23,7 @@ export const useRaceEventsStore = defineStore('raceEvents', {
 
     hasError: (state) => !!state.error,
     
-    eventTypes: () => ['All', 'Flag', 'Penalty', 'Pit', 'Incident'],
-    eventTypesWhenCollapsed: () => ['Flag', 'Penalty', 'Pit', 'Incident'],
+    eventTypes: (state) => ['All', ...state.eventTypesWhenCollapsed],
 
     eventTypeStyles: () => ({
       FLAG: "bg-yellow-500/10",
@@ -52,6 +52,23 @@ export const useRaceEventsStore = defineStore('raceEvents', {
       // 限制事件数量
       if (this.events.length > this.maxEvents) {
         this.events.pop();
+      }
+
+      // 调整事件类型顺序
+      this.adjustEventTypeOrder(event.type);
+    },
+
+    adjustEventTypeOrder(eventType) {
+      // 将事件类型转换为首字母大写格式
+      const formattedType = eventType.charAt(0).toUpperCase() + eventType.slice(1).toLowerCase();
+      
+      if (this.eventTypesWhenCollapsed.includes(formattedType)) {
+        // 移除当前位置
+        const index = this.eventTypesWhenCollapsed.indexOf(formattedType);
+        this.eventTypesWhenCollapsed.splice(index, 1);
+        
+        // 添加到开头
+        this.eventTypesWhenCollapsed.unshift(formattedType);
       }
     },
 
