@@ -17,7 +17,7 @@ app = FastAPI()
 # CORS设置
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],  # Vite 默认端口
+    allow_origins=["http://localhost:3000"],  # 修改为你的前端地址
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -116,11 +116,13 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends()):
     # Filter sensitive information
     user_info = {k: v for k, v in user.items() if k != "hashed_password"}
     
-    return Token(
-        access_token=access_token,
-        token_type="bearer",
-        user_info=user_info
-    )
+    response_data = {
+        "access_token": access_token,
+        "token_type": "bearer",
+        "user_info": user_info
+    }
+    
+    return response_data
 
 
 @app.get("/users/me")

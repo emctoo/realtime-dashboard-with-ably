@@ -3,16 +3,21 @@ import { createPinia } from 'pinia';
 import './style.css';
 import App from './App.vue';
 import { useAblyStore } from './stores/ably';
+import { useAuthStore } from './stores/auth';
 
 const app = createApp(App);
 const pinia = createPinia();
 app.use(pinia);
 
-// 初始化Ably store
+// Initialize stores
 const ablyStore = useAblyStore();
-ablyStore.initialize(import.meta.env.VITE_ABLY_API_KEY)
-  .catch(err => {
-    console.error('Failed to initialize Ably:', err);
-  });
+const authStore = useAuthStore();
+
+Promise.all([
+  ablyStore.initialize(import.meta.env.VITE_ABLY_API_KEY),
+  authStore.init()
+]).catch(err => {
+  console.error('Failed to initialize stores:', err);
+});
 
 app.mount('#app');
