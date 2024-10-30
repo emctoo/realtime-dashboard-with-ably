@@ -8,7 +8,8 @@ export const useRaceEventsStore = defineStore('raceEvents', {
     loading: false,
     error: null,
     maxEvents: 100,
-    eventTypesWhenCollapsed: ['Flag', 'Penalty', 'Pit', 'Incident']
+    eventTypesWhenCollapsed: ['Flag', 'Penalty', 'Pit', 'Incident'],
+    isSubscribed: false
   }),
 
   getters: {
@@ -78,6 +79,11 @@ export const useRaceEventsStore = defineStore('raceEvents', {
     },
 
     async subscribeToRaceEvents() {
+      if (this.isSubscribed) {
+        console.log('Race events already subscribed');
+        return;
+      }
+
       this.loading = true;
       this.error = null;
       
@@ -87,23 +93,33 @@ export const useRaceEventsStore = defineStore('raceEvents', {
         
         console.log(`RE / subscribing to ${channelName}`);
         await ablyStore.subscribe(channelName, (message) => {
-            console.log('RE / received message:', message.data);
-            this.addEvent(message.data);          
+          console.log('RE / received message:', message.data);
+          this.addEvent(message.data);          
         });
         
-        this.loading = false;
+        this.isSubscribed = true;
+        this.error = null;
+        console.log(`RE / subscribled to ${channelName}`);
       } catch (err) {
         this.error = 'Failed to subscribe to race events: ' + err.message;
-        this.loading = false;
+        this.isSubscribed = false;
         throw err;
+      } finally {
+        this.loading = false;
       }
     },
 
     async unsubscribeFromRaceEvents() {
+      if (!this.isSubscribed) {
+        return;
+      }
+      
       try {
         const ablyStore = useAblyStore();
         const channelName = ablyStore.getChannelName('race', 'events');
         await ablyStore.unsubscribe(channelName);
+        this.isSubscribed = false;
+        console.log(`RE / unsubscribled to ${channelName}`);
       } catch (err) {
         this.error = 'Failed to unsubscribe from race events: ' + err.message;
         throw err;

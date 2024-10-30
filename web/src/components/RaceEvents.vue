@@ -85,8 +85,9 @@
 </template>
 
 <script setup>
-import { onMounted, onUnmounted } from 'vue';
+import { onMounted, onUnmounted, watch } from 'vue';
 import { useRaceEventsStore } from '../stores/raceEvents';
+import { useAblyStore } from '../stores/ably';
 import { storeToRefs } from 'pinia';
 
 const props = defineProps({
@@ -100,6 +101,8 @@ defineEmits(['toggle-collapse']);
 
 // Store setup
 const raceEventsStore = useRaceEventsStore();
+const ablyStore = useAblyStore();
+const { connectionState } = storeToRefs(ablyStore);
 const { 
   filteredEvents,
   eventTypes,
@@ -120,13 +123,24 @@ const formatTime = (timestamp) => {
   });
 };
 
-// Lifecycle hooks
-onMounted(async () => {
-  await raceEventsStore.subscribeToRaceEvents();
-});
+// Watch for Ably connection state
+const stopWatch = watch(
+  () => connectionState.value,
+  async (newState, oldState) => {
+    console.log(`Ably connection state changed: ${oldState} -> ${newState}`);
+    if (newState === 'connected') {
+      await raceEventsStore.subscribeToRaceEvents();
+    } else if (newState === 'disconnected' || newState === 'failed') {
+      await raceEventsStore.unsubscribeFromRaceEvents();
+    }
+  },
+  { immediate: true } // 立即检查当前状态
+);
 
-onUnmounted(async () => {
-  await raceEventsStore.unsubscribeFromRaceEvents();
+// Lifecycle hooks
+onUnmounted(() => {
+  stopWatch(); // 清理 watch
+  raceEventsStore.unsubscribeFromRaceEvents();
 });
 </script>
 
