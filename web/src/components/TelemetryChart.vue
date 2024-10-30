@@ -10,12 +10,13 @@
                 :class="[
                     telemetryStore.currentMetric === metric.id 
                         ? 'bg-blue-500/20 text-blue-400 border border-blue-500/50' 
-                        : 'bg-gray-800/50 text-gray-400 border border-gray-700/50 hover:border-gray-600/50'
+                        : getMetricButtonClass(metric.id)
                 ]"
             >
                 <div class="flex items-center gap-1.5">
                     <component :is="metric.icon" class="w-3.5 h-3.5" />
                     {{ metric.label }}
+                    <span v-if="metric.id === 'fuel'" class="ml-1 text-[10px] text-yellow-500">PRO</span>
                 </div>
             </button>
         </div>
@@ -29,14 +30,18 @@
                 class="h-full"
             />
         </div>
+
+        <!-- Premium Upgrade Modal -->
+        <PremiumDialog v-model:show="showUpgradeModal" />
     </div>
 </template>
 
 <script setup>
-import { onUnmounted, watch } from "vue";
+import { ref, onUnmounted, watch } from "vue";
 import { storeToRefs } from 'pinia';
 import { useAblyStore } from "../stores/ably";
 import { useTelemetryStore } from "../stores/telemetry";
+import { useAuthStore } from "../stores/auth";
 import {
     Chart as ChartJS,
     CategoryScale,
@@ -49,6 +54,7 @@ import {
     Filler,
 } from "chart.js";
 import { Line as LineChart } from "vue-chartjs";
+import PremiumDialog from './PremiumDialog.vue';
 
 // Register ChartJS components
 ChartJS.register(
@@ -72,14 +78,33 @@ const props = defineProps({
 // Store setup
 const telemetryStore = useTelemetryStore();
 const ablyStore = useAblyStore();
+const authStore = useAuthStore();
 const { connectionState } = storeToRefs(ablyStore);
+const { isPremium } = storeToRefs(authStore);
+
+// Local state
+const showUpgradeModal = ref(false);
 
 // Handle metric change
 const handleMetricChange = async (metric) => {
+    if (metric === 'fuel' && !isPremium.value) {
+        showUpgradeModal.value = true;
+        return;
+    }
+
     telemetryStore.setMetric(metric);
     if (connectionState.value === 'connected') {
         await telemetryStore.subscribeToCar(props.carId);
     }
+};
+
+// Get button classes based on metric and premium status
+const getMetricButtonClass = (metricId) => {
+    const baseClass = 'bg-gray-800/50 text-gray-400 border border-gray-700/50 hover:border-gray-600/50';
+    if (metricId === 'fuel' && !isPremium.value) {
+        return `${baseClass} opacity-75 cursor-not-allowed`;
+    }
+    return baseClass;
 };
 
 // Watch for car changes
