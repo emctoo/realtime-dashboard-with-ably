@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia';
 import axios from 'axios';
+import {useAblyStore} from './ably';
 
 // 创建一个带有基础配置的 axios 实例
 const api = axios.create({
@@ -35,8 +36,9 @@ export const useAuthStore = defineStore('auth', {
         params.append('username', username);
         params.append('password', password);
         
+        console.log(`user ${username} is logging in ...`);
         const response = await api.post('/api/token', params);
-        const { access_token, user_info } = response.data;
+        const { access_token, user_info, token_request } = response.data;        
         
         this.token = access_token;
         this.user = user_info;
@@ -47,6 +49,12 @@ export const useAuthStore = defineStore('auth', {
         // Store token in localStorage
         localStorage.setItem('token', access_token);
         localStorage.setItem('user', JSON.stringify(user_info));
+        console.log(`user ${username} logged in`);
+
+        const ablyStore = useAblyStore();
+        console.log(`got token_request for ${token_request['_TokenRequest__client_id']}`);
+        console.dir(token_request);
+        await ablyStore.updateAuthData(token_request);
         
         return true;
       } catch (err) {
@@ -59,12 +67,16 @@ export const useAuthStore = defineStore('auth', {
     },
 
     logout() {
+      const username = this.user?.username || 'unknown';
+
       this.token = null;
       this.user = null;
       localStorage.removeItem('token');
       localStorage.removeItem('user');
       // 清除认证头
       delete api.defaults.headers.common['Authorization'];
+
+      console.log(`user ${username} logged out`);      
     },
 
     // Initialize auth state from localStorage

@@ -15,7 +15,7 @@ const authStore = useAuthStore();
 
 Promise
   .all([
-    ablyStore.initialize(import.meta.env.VITE_ABLY_API_KEY),
+    ablyStore.initialize(),
     authStore.init()
   ])
   .catch(err => {

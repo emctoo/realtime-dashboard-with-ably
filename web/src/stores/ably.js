@@ -1,7 +1,6 @@
 import { defineStore } from 'pinia';
 import * as Ably from "ably";
-
-import { useAuthStore } from './auth';
+import axios from 'axios';
 
 export const useAblyStore = defineStore('ably', {
   state: () => ({
@@ -9,6 +8,7 @@ export const useAblyStore = defineStore('ably', {
     connectionState: 'disconnected',
     error: null,
     subscriptions: new Map(), // 跟踪所有活跃的订阅
+    clientId: null, // 存储当前client ID
   }),
 
   getters: {
@@ -17,24 +17,52 @@ export const useAblyStore = defineStore('ably', {
   },
 
   actions: {
-    async initialize(apiKey) {
+    async getAnonymousTokenRequest() {
+      try {
+        console.log('getting anonymous token request ...');
+        const response = await axios.get('/api/anonymous-token');
+        return {
+          tokenRequest: response.data.ably_token,
+          clientId: response.data.client_id
+        };
+      } catch (err) {
+        console.error('Failed to get anonymous token request:', err);
+        throw new Error('Failed to get anonymous token request');
+      }
+    },
+
+    async initialize() {
       console.log('init ably store ...')
       try {
         // 如果已经有client，先关闭
         if (this.client) {
           await this.disconnect();
-          console.log('disconnected');
+          console.log('disconnected existing client');
         }
+
+        // 获取初始的token request
+        const { tokenRequest, clientId } = await this.getAnonymousTokenRequest();
+        this.clientId = clientId;
 
         // 创建新的Ably客户端        
         this.client = new Ably.Realtime({
-          key: apiKey,
-          clientId: `anno-web-${Math.random().toString(36).substr(2, 9)}`,
+          authCallback: async (tokenParams, callback) => {
+            try {
+              // 当需要新token时，获取新的token request
+              const { tokenRequest } = await this.getAnonymousTokenRequest();
+              callback(null, tokenRequest);
+            } catch (err) {
+              callback(err, null);
+            }
+          },
+          // clientId: this.clientId,
+          // 使用初始token request
+          // authData: tokenRequest
         });
 
         // 监听连接状态变化
         this.client.connection.on('connected', () => {
-          console.log('connected');
+          console.log('connected with clientId:', this.client.auth.clientId);
           this.connectionState = 'connected';
           this.error = null;
         });
@@ -50,6 +78,10 @@ export const useAblyStore = defineStore('ably', {
           this.error = err.message;
         });
 
+        this.client.connection.on('update', (stateChange) => {
+          console.log('connection state updated:', stateChange);
+        });
+
         return new Promise((resolve, reject) => {
           this.client.connection.once('connected', () => {
             resolve();
@@ -59,9 +91,39 @@ export const useAblyStore = defineStore('ably', {
             reject(err);
           });
         });
+
       } catch (err) {
-        console.log(err);
+        console.error('Failed to initialize Ably:', err);
         this.error = err.message;
+        throw err;
+      }
+    },
+
+    async updateAuthData(tokenRequest) {
+      if (!this.client) {
+        throw new Error('Ably client not initialized');
+      }
+
+      console.dir(tokenRequest);
+      try {
+        // 从 tokenRequest 提取需要的参数
+        const tokenParams = {
+          keyName: tokenRequest.keyName,
+          timestamp: tokenRequest.timestamp,
+          nonce: tokenRequest.nonce,          
+          capability: tokenRequest.capability,
+          clientId: tokenRequest.clientId
+        };
+
+        // 使用token params更新授权        
+        console.dir(tokenParams);
+        const tokenDetails = await this.client.auth.authorize(tokenParams);        
+        
+        console.log('Successfully updated auth with new token details:', tokenDetails);
+        return tokenDetails;
+      } catch (err) {
+        console.error('Failed to update auth:', err);
+        this.error = `Failed to update auth: ${err.message}`;
         throw err;
       }
     },
@@ -118,6 +180,7 @@ export const useAblyStore = defineStore('ably', {
         await this.client.close();
         this.client = null;
         this.connectionState = 'disconnected';
+        this.clientId = null;
       }
     },
 
