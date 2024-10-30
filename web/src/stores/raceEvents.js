@@ -91,15 +91,30 @@ export const useRaceEventsStore = defineStore('raceEvents', {
         const ablyStore = useAblyStore();
         const channelName = ablyStore.getChannelName('race', 'events');
         
-        console.log(`RE / subscribing to ${channelName}`);
-        await ablyStore.subscribe(channelName, (message) => {
-          console.log('RE / received message:', message.data);
-          this.addEvent(message.data);          
+        // 获取 Ably 的 channel 实例
+        const channel = ablyStore.client.channels.get(channelName, {
+          params: {
+            rewind: '20' // 获取最近20条消息
+          }
+        });
+
+        // 订阅消息，包括历史消息
+        await new Promise((resolve, reject) => {
+          channel.subscribe('update', (message) => {
+            console.log('RE / received message:', message.data);
+            this.addEvent(message.data);
+          }, (err) => {
+            if (err) {
+              reject(err);
+            } else {
+              resolve();
+            }
+          });
         });
         
         this.isSubscribed = true;
         this.error = null;
-        console.log(`RE / subscribled to ${channelName}`);
+        console.log(`RE / subscribed to ${channelName} with rewind`);
       } catch (err) {
         this.error = 'Failed to subscribe to race events: ' + err.message;
         this.isSubscribed = false;
@@ -119,7 +134,7 @@ export const useRaceEventsStore = defineStore('raceEvents', {
         const channelName = ablyStore.getChannelName('race', 'events');
         await ablyStore.unsubscribe(channelName);
         this.isSubscribed = false;
-        console.log(`RE / unsubscribled to ${channelName}`);
+        console.log(`RE / unsubscribed from ${channelName}`);
       } catch (err) {
         this.error = 'Failed to unsubscribe from race events: ' + err.message;
         throw err;
